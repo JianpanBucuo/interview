@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+    <body>
+        <div>
+            <h4>
+                <p class="1">{{aaaa}}</p>
+                <div id="a"><a href="www.test.com"></a></div>
+            </h4>
+        </div>
+        <div>
+            <p>
+                <p>1</p>
+                <h3></h3>
+            </p>
+        </div>
+    </body>
+    <script>
+        // var el = document.querySelector('body')
+        // var fragment = document.createDocumentFragment(), child;
+        // // 将原生节点拷贝到fragment
+        // console.log(el.childNodes[0].nodeType)
+        // fragment.appendChild( el.firstChild);
+        // console.log(el.childNodes[0].nodeType)
+        // while (child = el.firstChild) {
+        //     fragment.appendChild(child);
+        // }
+        // console.log(fragment)
+        var a = document.querySelector('h3')
+        var b =document.querySelector('h4')
+        a.appendChild(b)
+    </script>
+</html>
