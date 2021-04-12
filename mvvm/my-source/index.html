@@ -3,30 +3,46 @@
     <body>
         <div>
             <h4>
-                <p class="1">{{aaaa}}</p>
-                <div id="a"><a href="www.test.com"></a></div>
+                <p class="1 classA classB">{{aaaa}}</p>
+                <div id="a" class="link" v-show="false"><a href="www.test.com">11</a></div>
             </h4>
         </div>
         <div>
-            <p>
-                <p>1</p>
+            <div id="app">
+                <p v-on:click="demo" v-html="obj.a"> >1</p>
                 <h3></h3>
-            </p>
+            </div>
         </div>
     </body>
+    <!-- <script src="./observer.js"></script> -->
+    <script src='./test.js'></script>
     <script>
-        // var el = document.querySelector('body')
-        // var fragment = document.createDocumentFragment(), child;
-        // // 将原生节点拷贝到fragment
-        // console.log(el.childNodes[0].nodeType)
-        // fragment.appendChild( el.firstChild);
-        // console.log(el.childNodes[0].nodeType)
-        // while (child = el.firstChild) {
-        //     fragment.appendChild(child);
-        // }
-        // console.log(fragment)
-        var a = document.querySelector('h3')
-        var b =document.querySelector('h4')
-        a.appendChild(b)
+        var vm = {
+            obj:{
+                    a:'212'
+                },
+            $options:{
+                methods: {
+                    demo:function () {
+                        console.log('demo')
+                    }
+                },
+              
+            }
+        }
+        var compile = new Compile('#app',vm)
+        console.log(compile)
+    </script>
+    <script>
+       
+        function a (vm, exp){
+            //exp ===   a.b.c
+            var val = vm
+            exp = exp.split('.') // [a,b]
+            exp.forEach(k => {
+                val = val[k]
+            })
+            return  val
+        }
     </script>
 </html>

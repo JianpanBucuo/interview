@@ -30,31 +30,38 @@ Compile.prototype = {
     compileElement:function(el) {
         var childNodes = el.childNodes
         var me = this
-        Array.prototype.slice.call(childNodes).forEach(function (node) {
+        Array.prototype.slice.call(childNodes).forEach(  (node) => {
             var text = node.textContent
             var reg = /\{\{(.*)\}\})/
-            if(me.isElementNode(node)) {
-                me.compile(node)
+            // 是否是元素节点
+            if(this.isElementNode(node)) {
+                this.compile(node)
             }
-            else if (me.isTextNode(node) && reg.test(text)) {
-                me.compileText(node,RegExp.$1)
+            // 是否是文本节点
+            else if (this.isTextNode(node) && reg.test(text)) {
+                // RegExp.$1 最新匹配上的元素
+                this.compileText(node,RegExp.$1)
+            }
+            if(node.childNodes && node.childNodes.length > 0 ){
+                this.compileElement(node)
             }
         })
     },
-    isElementNode:function(node) {
-    // nodeType 1 元素节点
-    
-        return node.nodeType === 1
-    },
-    isTextNode:function(node) {
-        //  nodeType 3 文本节点
-        return node.nodeType === 3
-    },
+
     compile:function() {
 
     },
     compileText:function() {
 
-    }
+    },
+    isElementNode:function(node) {
+        // nodeType 1 元素节点
+        
+            return node.nodeType === 1
+        },
+    isTextNode:function(node) {
+        //  nodeType 3 文本节点
+        return node.nodeType === 3
+    },
 }
 

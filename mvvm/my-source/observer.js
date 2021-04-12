@@ -1,54 +1,70 @@
-var data = {
-    name: 'nic',
-    innerObj: {
-      a: 'b'
-    }
-  }
-  observe(data)
-  data.name = '1'
-
-//   拦截器
-function observe(obj) {
-  if (!obj || typeof obj !== 'object') {
-    return
-  }
-  Object.keys(obj).forEach((key) => {
-    defineReactive(obj, key, obj[key])
-  })
-}
-function defineReactive(obj, key, val) {
-  observe(val)
-  var dep = new Dep()
-  Object.defineProperty(obj, key, {
-    enumerable: true,
-    configurable: false,
-    get: function () {
-        Dep.target && dep.addSub(Dep.target)
-        return val
-    },
-    set: function (newVal) {
-        if(newVal === val) return
-        
-        console.log('监听到了', val, '--->', newVal)
-        val = newVal
-        dep.notify()
-    }
-  })
-}
-
-
-// 实现消息订阅器，收集订阅者，数据变动触发通知（发布）， -> 通知订阅者更新
-
-function Dep () {
-    this.subs = []
-}
-Dep.prototype = {
-    addSub:function(sub) {
-        this.subs.push(sub)
-    },
-    notify:function() {
-        this.subs.forEach(v => {
-            v.update()
+ function Observer (data) {
+     this.data= data
+     this.walk(data)
+ }
+ Observer.prototype = {
+     constructor: Observer,
+     walk:function(data) {
+        Object.keys(data).forEach(key => {
+            this.convert(key, data[key])
         })
-    }
-}
+     },
+     convert:function (key, val) {
+         this.defineReactive(this.data, key ,val)
+     },
+     defineReactive:function(data, key , val) {
+        var dep = new Dep()
+        var childObj = observe(val)
+        Object.defineProperty(data, key, {
+            enumerable: true,
+            configurable: false,
+            get:function() {
+                if(Dep.target) {
+                    dep.depend()
+                }
+                return val
+            },
+            set:function(newVal) {
+                if(newVal == val) {
+                    return 
+                }
+                val = newVal
+                childObj =observe(newVal)
+                dep.notify()
+            }
+        })
+     }
+ }
+
+ function observe (value, vm) {
+     if(!value || typeof value !== 'object') {
+         return
+     }
+     return new Observer(value)
+ }
+
+ var uid = 0;
+ function Dep() {
+     this.id = uid++
+     this.subs = []
+ }
+ Dep.prototype = {
+     addSub:function(sub) {
+         this.subs.push(sub)
+     },
+     depend:function() {
+         Dep.target.addDep(this)
+     },
+     removeSub:function(sub) {
+         var index = this.subs.indexOf(sub)
+         if(index !== -1) {
+             this.subs.splice(index,1)
+         }
+     },
+     notify:function() {
+         this.subs.forEach(sub => {
+             sub.update()
+         })
+     }
+ }
+ Dep.target = null

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+    <meta charset="utf-8">
+    <head></head>
+    <body>
+        <div id="app">
+            <input type="text" v-model="school.name"/>
+            <div class="class-school">{{school.name}}{{school.age}}</div>
+            <div id="id-school">{{school.age}}{{school.age}}</div>
+            <ul>
+                <li v-html="school.name">1</li>
+                <li>{{getNewName}}</li>
+                <li>{{a}}</li>
+            </ul>
+            <button v-on:click="change">change</button>
+        </div>
+        <!-- <script src="./js/mvvm.js"></script> -->
+        <!-- <script src="https://lib.baomitu.com/vue/2.6.12/vue.common.dev.js"></script> -->
+        <script src="./js/test.js"></script>
+        <script>
+            let vm = new Vue({
+                el:'#app',
+                data:{
+                    school:{
+                        name:'nic',
+                        age:'18'
+                    },
+                    a:['1','2','3'],
+                    message:'111'
+                },
+                computed:{
+                    getNewName() {
+                        console.log(this.school.name ,'this.school.name ')
+                        return this.school.name + 'computed'
+                    }
+                },
+                methods:{
+                    change() {
+                        console.log('11')
+                        this.school.name = 'abc'
+                    }
+                }
+            })
+            console.log(vm)
+        </script>
+    </body>
+</html>
