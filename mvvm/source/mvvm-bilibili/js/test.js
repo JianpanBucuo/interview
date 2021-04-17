@@ -2,37 +2,90 @@ class Vue {
     constructor(options) {
         this.$el = options.el
         this.$data = options.data
-        
+        let methods = options.methods
+        let computed = options.computed
         if(this.$el) {
             new Observer(this.$data)
 
+            for(let key in  methods) {
+                Object.defineProperty(this.$data, key, {
+                    enumerable:true,
+                    get: () => {
+                        return methods[key]
+                    }
+                })
+            }
+            for(let key in computed) {
+                Object.defineProperty(this.$data, key, {
+                    enumerable:true,
+                    get:() => {
+                       return computed[key].call(this.$data)
+                    }
+                })
+            }
+            this.proxyVm(this.$data)
             new Compiler(this.$el, this)
+        }
+    }
+    proxyVm(data) {
+        for(let key in data) {
+            console.log(key)
+            Object.defineProperty(this, key, {
+                get() {
+                    return data[key]
+                },
+                set(newVal) {
+                      data[key]= newVal
+                }
+            })
         }
     }
 }
 var compileUtil = {
     html(node, expr,vm) {
-        console.log('in html',expr)
         let value = this.getVal(vm, expr)
-        console.log(value)
         this.updater['htmlUpdater'](node, value)
         new Watcher(vm, expr, (newVal) => {
-            console.log('newVal',newVal)
             this.updater['htmlUpdater'](node, newVal)
         })
     },
+    getContentValue(vm,expr) {
+        // 遍历表达式，将内容重新替换成一个完整的内容，返还回去
+        
+        return expr.replace(/\{\{(.+?)\}\}/g, (match, changedExpr) => { 
+            console.log('expr',changedExpr === 'getNewName') 
+      
+            return this.getVal(vm, changedExpr)
+        })
+    },
     text(node, expr,vm) {
-        console.log('in text')
         let value = expr.replace(/\{\{(.+?)\}\}/g, (match, exprIn) => {
+           
+            new Watcher(vm, exprIn, (newVal) => {
+                // 如果数据跟新了会触发此方法 
+                
+                this.updater['textUpdater'](node,newVal) //返回一个全的字符串
+            })
             return this.getVal(vm, exprIn)
         })
         this.updater['textUpdater'](node, value)
     },
     on(node, expr,vm, eventName) {
-        console.log('in on')
+        console.log('in on',node, expr,vm, eventName)
+        node.addEventListener(eventName, e =>{
+            console.log(vm, expr)
+            vm[expr].call(vm, e)
+        })
     },
     model(node, expr,vm) {
-        console.log('in model')
+        var value = this.getVal(vm, expr)
+        this.updater['modelUpdater'](node, value)
+        new Watcher(vm, expr, (newVal) => {
+            this.updater['modelUpdater'](node, newVal)
+        })
+        node.addEventListener('input', e => {
+            this.setVal(vm, expr, e.target.value)
+        })
     },
     getVal(vm, expr) {
         let arr = expr.split('.')
@@ -41,12 +94,23 @@ var compileUtil = {
             return data[current]
         },vm.$data)
     },
+    setVal(vm, expr, value) {
+        expr.split('.').reduce((data, current, index, arr) => {
+            if(arr.length - 1 === index) {
+                return data[current] = value
+            } 
+            return data[current]
+        }, vm.$data)
+    },
     updater:{
         htmlUpdater(node, value) {
             node.innerHTML = value
         },
         textUpdater(node, value) {
             node.textContent = value
+        },
+        modelUpdater(node, value) {
+            node.value = value
         }
     }
 }
@@ -62,9 +126,9 @@ class Observer {
         }
     }
     defineReactive(obj, key, val) {
-        if(typeof val === 'object') {
+      
             this.observer(val)
-        }
+
         var dep = new Dep()
         Object.defineProperty(obj, key, {
             get() {
@@ -156,7 +220,6 @@ class Dep {
         this.subs.push(watcher)
     }
     notify() {
-        console.log('notify',this.subs)
         this.subs.forEach(watcher => {
             watcher.update()
         })
@@ -177,7 +240,6 @@ class Watcher {
         return value
     }
     update() {
-        console.log(this.vm,this.vm.$data.school,'newVal')
         let newVal = compileUtil.getVal(this.vm, this.expr)
         
         if(newVal !==this.oldValue) {
