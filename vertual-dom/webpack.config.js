@@ -1,5 +1,6 @@
 module.exports = {
-    entry:'./src/index.js',
+    entry:'./src/my-snabbdom/index.js',
+    // entry:'./src/index.js',
     output:{
         // 虚拟打包路径
         publicPath:'/xuni',
