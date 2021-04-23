@@ -63,6 +63,35 @@ btn.onclick = function() {
 // patch(container, myVnode1)
 
 patch(container, Vnode4)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // const patch = init([
 //     // Init patch function with chosen modules
 //     classModule, // makes it easy to toggle classes
