@@ -68,3 +68,13 @@ const node1 = h('div',{},[
         h('li',{}, 'line2')
     ])
 ])
+
+
+class A {
+    static Z = [];
+    constructor() {
+        console.log(A.Z)
+    }
+}
+
+new A()

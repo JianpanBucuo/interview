@@ -2,8 +2,8 @@
 export default function createElement(VNode) {
     let domNode = document.createElement(VNode.sel)
     // 子节点还是文本
+    console.log(VNode,'VNode.children')
     if(VNode.text !== '' &&  VNode.children.length === 0) {
-        console.log('内部是文本节点')
         domNode.innerText = VNode.txt
         VNode.elm = domNode
     } else if (VNode.children.length > 0) {

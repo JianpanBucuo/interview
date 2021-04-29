@@ -5,15 +5,19 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev":"webpack-dev-server -w"
+    "dev": "webpack-dev-server -w"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "snabbdom": "^3.0.1",
+    "ts-loader": "^9.1.1",
     "webpack": "^5.33.2",
     "webpack-cli": "^3.3.12",
     "webpack-dev-server": "^3.11.2"
+  },
+  "dependencies": {
+    "typescript": "^4.2.4"
   }
 }
