@@ -1,0 +1,17 @@
+.DS_Store
+node_modules/
+/dist/
+/CooperationMallH5Resources/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+CooperationMallH5Resources
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+/package-lock.json

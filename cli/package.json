@@ -1,0 +1,29 @@
+{
+  "name": "cli",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "xr": "node ./bin/xr"
+
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bin": {
+    "xr": "./bin/xr.js",
+    "xr-add": "./bin/xr-add.js",
+    "xr-delete": "./bin/xr-delete.js",
+    "xr-list": "./bin/xr-list.js",
+    "xr-init": "./bin/xr-init"
+  },
+  "devDependencies": {
+    "chalk": "^4.1.1",
+    "commander": "^7.2.0",
+    "download-git-repo": "^3.0.2",
+    "inquirer": "^8.0.0",
+    "ora": "^5.4.0"
+  },
+  "dependencies": {},
+  "description": ""
+}
