@@ -1,0 +1,17 @@
+{
+  "name": "relect-proxcy",
+  "version": "1.0.0",
+  "description": "一个 proxy 对象包装另一个对象对其进行拦截 （如读取/写入属性和其他操作）",
+  "main": "proxy.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "npx tsc && node lib/reflect-decorator.js --watch src"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "reflect-metadata": "^0.1.13",
+    "typescript": "^4.3.2"
+  }
+}

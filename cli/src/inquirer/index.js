@@ -19,9 +19,9 @@ const promptList = [
     }
 ]
 
-// inquirer.prompt(promptList).then(answers =>{
-//     console.log(answers) //  { name: 'sa', phone: '132600872444' }
-// })
+inquirer.prompt(promptList).then(answers =>{
+    console.log(answers) //  { name: 'sa', phone: '132600872444' }
+})
 process.argv.forEach((val, index) => {
  
     console.log(`${index}: ${val}`);

@@ -1,0 +1,28 @@
+{
+    "name": "koa-docker",
+    "description": "怎么将nodejs koa程序打包成docker应用",
+    "version": "0.0.1",
+    "dependencies": {
+      "ejs": "^2.5.6",
+      "fs-promise": "^2.0.3",
+      "koa": "^2.2.0",
+      "koa-basic-auth": "^2.0.0",
+      "koa-body": "^4.0.8",
+      "koa-compose": "^4.0.0",
+      "koa-csrf": "^3.0.6",
+      "koa-logger": "^3.0.0",
+      "@koa/router": "^8.0.5",
+      "koa-session": "^5.0.0",
+      "koa-static": "^3.0.0",
+      "koa-views": "^6.0.2"
+    },
+    "scripts": {
+      "test": "NODE_ENV=test mocha --harmony --reporter spec --require should */test.js",
+      "lint": "eslint ."
+    },
+    "engines": {
+      "node": ">= 7.6"
+    },
+    "license": "MIT"
+  }
+  

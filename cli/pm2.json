@@ -1,0 +1,14 @@
+{
+    "apps": [
+        {
+            "name": "node-app",
+            "script": "-r pre.js app.js",
+            "log_data_format": "YYYY-MM-DD HH:mm",
+            "out_file": "log/node_app.stdout.log",
+            "watch": true,
+            "instances": "max",
+            "exec_mode": "cluster"
+        }
+    ]
+}
+ 

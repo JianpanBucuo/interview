@@ -4,17 +4,20 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "xr": "node ./bin/xr"
-
+    "xr": "node ./bin/xr",
+    "start": "node -r ./pre.js ./a.js",
+    "dev":"node  -r ./pre.js node_modules/pm2/bin/pm2 start ./a.js",
+    "dev2":"node -r ./pre.js  node_modules/pm2/bin/pm2 start ./a.js",
+    "pm2":"pm2 ./pm2.json"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bin": {
-    "xr": "./bin/xr.js",
-    "xr-add": "./bin/xr-add.js",
-    "xr-delete": "./bin/xr-delete.js",
-    "xr-list": "./bin/xr-list.js",
+    "xr": "./bin/xr",
+    "xr-add": "./bin/xr-add",
+    "xr-delete": "./bin/xr-delete",
+    "xr-list": "./bin/xr-list",
     "xr-init": "./bin/xr-init"
   },
   "devDependencies": {
@@ -24,6 +27,15 @@
     "inquirer": "^8.0.0",
     "ora": "^5.4.0"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@opentelemetry/api": "^1.0.1",
+    "@opentelemetry/exporter-zipkin": "^0.23.0",
+    "@opentelemetry/instrumentation-express": "^0.23.0",
+    "@opentelemetry/instrumentation-grpc": "^0.23.0",
+    "@opentelemetry/instrumentation-http": "^0.23.0",
+    "@opentelemetry/node": "^0.23.0",
+    "@opentelemetry/tracing": "^0.23.0",
+    "pm2": "^5.1.0"
+  },
   "description": ""
 }
