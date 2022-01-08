@@ -18,6 +18,6 @@
 解决方案是实现请求上下文 本地存储， 在当前作用域代码中能够获取`请求上下文信息`,待处理完毕清除保存的上下文信息，这些需求可以通过 Async hooks 提供的 API 实现
 https://juejin.cn/post/6922582727375978510#heading-2
 https://mp.weixin.qq.com/s/DIDQaJgQcVwsdnbjx7LN_w
-
+https://zhuanlan.zhihu.com/p/27394440
 winston
 https://github.com/winstonjs/winston/blob/master/docs/transports.md
