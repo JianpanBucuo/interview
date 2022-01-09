@@ -21,3 +21,49 @@ https://mp.weixin.qq.com/s/DIDQaJgQcVwsdnbjx7LN_w
 https://zhuanlan.zhihu.com/p/27394440
 winston
 https://github.com/winstonjs/winston/blob/master/docs/transports.md
+
+获取当前异步资源 ID，和触发当前异步资源的 资源 ID
+
+```js
+const asyncHooks = require('async_hooks')
+const fs = require('fs')
+
+//当前 异步资源ID
+const asyncId = () => asyncHooks.executionAsyncId()
+// 触发当前异步资源的 异步资源ID（源ID）
+const triggerAsyncId = () => asyncHooks.triggerAsyncId()
+
+console.log(
+  `Global asyncId: ${asyncId()}, Global triggerAsyncId: ${triggerAsyncId()}`
+)
+
+fs.open('hello.txt', (err, res) => {
+  console.log(
+    `fs.open asyncId: ${asyncId()}, fs.open triggerAsyncId: ${triggerAsyncId()}`
+  )
+})
+// Global asyncId: 1, Global triggerAsyncId: 0
+// fs.open asyncId: 5, fs.open triggerAsyncId: 1
+```
+
+<!-- 开启Promise 监控 -->
+
+```js
+const syncLog = (...args) =>
+  fs.writeFileSync('log.txt', `${args.join(' ')}\n`, { flag: 'a' })
+
+const hooks = asyncHooks.createHook({
+  promiseResolve(asyncId) {
+    syncLog('promiseResolve: ', asyncId)
+  }
+})
+// 开启promise 启用 hooks实例
+hooks.enable()
+new Promise((resolve) => resolve(true)).then((a) => {}).then((a) => {})
+// promiseResolve:  2
+// promiseResolve:  3
+// promiseResolve:  4
+```
+
+<!-- 目前只解决了在当前异步资源ID中获取 源资源ID， 下面将实现数据共享 -->
+<!-- 异步之间的共享上下文 -->

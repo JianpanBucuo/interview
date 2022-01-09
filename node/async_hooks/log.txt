@@ -1,0 +1,17 @@
+promiseResolve:  2
+promiseResolve:  3
+promiseResolve:  2
+promiseResolve:  3
+promiseResolve:  4
+promiseResolve:  2
+promiseResolve:  3
+promiseResolve:  4
+promiseResolve:  2
+promiseResolve:  3
+promiseResolve:  4
+promiseResolve:  2
+promiseResolve:  3
+promiseResolve:  4
+promiseResolve:  2
+promiseResolve:  3
+promiseResolve:  4
