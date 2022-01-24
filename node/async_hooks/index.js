@@ -1,41 +1,54 @@
-const asyncHooks = require('async_hooks')
+const hook = require('async_hooks')
 const fs = require('fs')
+const express = require('express')
+// 当前执行上下文的asyncId
+const eid = hook.executionAsyncId()
+// 触发当前执行上下文的asyncId
+const tid = hook.triggerAsyncId()
 
-// //当前 异步资源ID
-const asyncId = () => asyncHooks.executionAsyncId()
-// // 触发当前异步资源的 异步资源ID（源ID）
-// const triggerAsyncId = () => asyncHooks.triggerAsyncId()
-
-// console.log(`Global asyncId: ${asyncId()}, Global triggerAsyncId: ${triggerAsyncId()}`);
-
-// fs.open('hello.txt', (err, res) => {
-//   console.log(`fs.open asyncId: ${asyncId()}, fs.open triggerAsyncId: ${triggerAsyncId()}`);
-// });
-
-
-const syncLog = (...args) => fs.writeFileSync('log.txt', `${(args.join(' '))}\n`, { flag: 'a' } );
-
-const hooks = asyncHooks.createHook({
-  promiseResolve(asyncId) {
-    syncLog('promiseResolve: ', asyncId);
-  }
+// 注册各种回调
+const asyncHook = hook.createHook({
+  init, before
 })
-hooks.enable();
-new Promise((resolve) => resolve(true)).then((a) => {}).then(a => {}) ;
+// 开启asyncHook，开启后才会执行回调
+asyncHook.enable();
 
+fs.writeSync(1,`eid ${eid}\n`)
+// 初始化异步操作时的钩子函数
+function init(asyncId, type, triggerAsyncId, resource) {
+  const eid = hook.executionAsyncId();
+  fs.writeSync(1,`init: asyncId: ${asyncId} triggerAsyncId: ${triggerAsyncId} execution:${eid}\n`)
+ }
 
-// 数据共享
-const { AsyncLocalStorage } = require('async_hooks')
-const asyncLocalStorage = new AsyncLocalStorage()
+// 异步回调执行之前的钩子函数，可能触发多次
+function before(asyncId) {
+  // fs.writeSync(1,`before: asyncId: ${asyncId} \n`)
+ }
 
-asyncLocalStorage.run({traceId: asyncId(),a: '2'}, test1)
-function test1() {
-  setTimeout(() => {
-    test2()
-    console.log('当前asyncId', asyncId())
-  },2000)
+// 异步回调完成后的钩子函数
+function after(asyncId) { }
+
+// 异步资源销毁时的钩子函数
+function destroy(asyncId) { }
+
+// 调用promiseResolve时的钩子函数
+function promiseResolve(asyncId) { }
+
+// const app = express()
+// app.get('/*', (req, res) => {
+//   console.log('111')
+//   res.send('11')
+// })
+// app.listen(3000)
+function callback(err, data) {
+  console.log('callback', data)
 }
-function test2() {
-  console.log(asyncLocalStorage.getStore())
+fs.readFile("a.txt", callback)
+ fs.writeSync(1,'after a\n')
+fs.readFile("b.txt", callback)
+ fs.writeSync(1,'after b\n')
+ function stackTrace() {
+  const obj = {}
+  Error.captureStackTrace(obj, stackTrace)
+  return obj.stack
 }
-// test1()

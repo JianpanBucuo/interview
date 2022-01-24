@@ -67,3 +67,11 @@ new Promise((resolve) => resolve(true)).then((a) => {}).then((a) => {})
 
 <!-- 目前只解决了在当前异步资源ID中获取 源资源ID， 下面将实现数据共享 -->
 <!-- 异步之间的共享上下文 -->
+
+https://juejin.cn/post/6844904101000511502
+https://juejin.cn/post/6950545906181767205#comment
+https://nodejs.org/dist/latest-v15.x/docs/api/async_hooks.html
+
+#### 添加 hook 的能力
+
+在所有异步任务创建，执行前，执行后，销毁后，触发回调，所有回调会传入 asyncId

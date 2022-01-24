@@ -1,0 +1,15 @@
+{
+  "name": "async_hooks",
+  "version": "1.0.0",
+  "description": "存储请求上下文，在异步调用之间共享数据",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.17.2"
+  }
+}
