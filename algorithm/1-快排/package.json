@@ -1,0 +1,12 @@
+{
+  "name": "1",
+  "version": "1.0.0",
+  "description": "1. 确定分界点 X\r 2. `重新划分区间`",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js"
+  },
+  "author": "",
+  "license": "ISC"
+}
