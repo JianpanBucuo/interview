@@ -18,3 +18,24 @@ grep -A50 /userNoPwdLoginPay.do /app/applogs/wappay30/wappay30 | grep 1326008724
 
 grep a index.html | grep b
 在查找 a 的基础上查找 b
+
+## tail
+
+tail -n 5 test.txt
+从文件尾部截取数据 5 行
+
+tail -n -f test.txt
+实时从文件尾部截取数据 5 行
+
+## cat
+
+cat -n test.txt
+-n 展示行号
+
+## tac
+
+从最后一行开始展示 `tac是cat的倒写形式`
+
+## head
+
+显示文件开头的内容，以行为单位，默认文件开头的前 10 行
