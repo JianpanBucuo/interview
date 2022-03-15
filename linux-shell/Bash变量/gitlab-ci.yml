@@ -1,0 +1,645 @@
+image: reg.unicom/galaxy/busybox:latest
+
+stages:
+  - verify
+  - compile
+  - build-image
+  - init-delivery
+  - resource-fix
+
+variables:
+  GIT_STRATEGY: fetch
+  EPAY_CI_VERSION: 'v2'
+  GITOPSER_IMAGE: 'reg.unicom/galaxy/ts-adcs/ts-adcs-gitopser:0.5.0-release'
+  COMPILE_IMAGE: 'reg.unicom/galaxy/ts-adcs/ts-adcs-compiler-alpine:1.0.0'
+  KANIKO_IMAGE: 'reg.unicom/galaxy/ts-adcs/kaniko-project-executor:debug-v0.19.0'
+  EPAY_NPM_REPOSITORY: 'http://nexus.unicompayment.com/repository/npm-group'
+  BINARY_SITE: 'http://nexus.unicompayment.com/repository/raw-node-group/'
+  SIT_REPLICA_COUNT_LIMIT: '[1-16]'
+  SIT_CPU_LIMIT: '[1-8]'
+  SIT_MEMORY_LIMIT: '[1-16](Gi)'
+  UAT_REPLICA_COUNT_LIMIT: '[1-16]'
+  UAT_CPU_LIMIT: '[1-8]'
+  UAT_MEMORY_LIMIT: '[1-16](Gi)'
+
+before_script:
+  - echo ${CI_PROJECT_URL}
+  - if [ -f pom.xml ]; then
+  - BUILD_TOOL=$(echo "MAVEN")
+  - elif [ -f package.json ]; then
+  - BUILD_TOOL=$(echo "NPM")
+  - fi
+  - if [[ $EPAY_CI_VERSION = "v2" ]]; then
+  - var=${CI_PROJECT_URL}
+  - arr=(${var//// })
+  - echo $arr
+  - echo ${#arr[@]}
+  - else
+  - echo "${CI_PROJECT_URL}"
+  - echo "V1"
+  - fi
+
+sit-verify-job:
+  stage: verify
+  image: $GITOPSER_IMAGE
+  before_script:
+    - export EPAYENV=xhm-k8s-sit
+  script:
+    - locale
+    - pwd
+    - ls -al
+    - java -jar /app/gitopser.jar -v . "$SIT_REPLICA_COUNT_LIMIT" "$SIT_CPU_LIMIT" "$SIT_MEMORY_LIMIT"
+    - java -jar /app/gitopser.jar --genDockerFiles ./docker ${CI_PROJECT_NAME}
+    - cat ./docker/Dockerfile
+    - cat ./docker/entrypoint.sh
+  artifacts:
+    paths:
+      - ./docker
+  only:
+    - release
+
+sit-compile-job:
+  stage: compile
+  image: '$COMPILE_IMAGE'
+  before_script:
+    - export BASE_IMAGE_TYPE=$(sed 's,\#.*,,' ci-values.yaml | sed -n '/baseImageType/p' | sed 's/\"//g' | sed 's/baseImageType//g' | sed 's/://g' | sed "s/\'//g" | sed 's/[ ]*//g')
+    - export JAVA_TYPE=$(echo $BASE_IMAGE_TYPE | grep "java")
+    - export NODE_TYPE=$(echo $BASE_IMAGE_TYPE | grep "node")
+    - export NGINX_TYPE=$(echo $BASE_IMAGE_TYPE | grep "nginx")
+    - export CADDY_TYPE=$(echo $BASE_IMAGE_TYPE | grep "caddy")
+    - export TRACE_TYPE=$(sed 's,\#.*,,' ci-values.yaml | sed -n '/traceType/p' | sed 's/\"//g' | sed 's/traceType//g' | sed 's/://g' | sed "s/\'//g" | sed 's/[ ]*//g')
+    - export OPENTELEMETRY=$(echo $TRACE_TYPE | grep "opentelemetry")
+    - export EPAYENV=xhm-k8s-sit
+  script:
+    - echo $BASE_IMAGE_TYPE
+    - pwd
+    - ls
+    - if [ "$JAVA_TYPE" ]; then
+    - mvn -Dmaven.test.skip=true -U -q clean package
+    - elif [[ "$NODE_TYPE" || "$NGINX_TYPE" || "$CADDY_TYPE" ]]; then
+    - npm config set sass_binary_site="$BINARY_SITE"
+    - npm config set canvas_binary_host_mirror="$BINARY_SITE"
+    - npm install --registry="$EPAY_NPM_REPOSITORY"
+    - export CI=false
+    - npm run build
+    - chmod -R 755 ./dist/
+    - if [ "$OPENTELEMETRY" ]; then
+    - npm install wo-trace-node --registry="$EPAY_NPM_REPOSITORY"
+    - fi
+    - else
+    - echo "baseImageType变量不合法"
+    - exit 1
+    - fi
+  artifacts:
+    paths:
+      - ./target/${CI_PROJECT_NAME}.jar
+      - ./dist
+      - ./node_modules
+  only:
+    - release
+
+sit-build-image-job:
+  stage: build-image
+  image:
+    name: '$KANIKO_IMAGE'
+    entrypoint: ['']
+  before_script:
+    - export SYSTEM_NICKNAME=$(echo ${CI_PROJECT_NAME} | cut -d - -f 1,2)
+    - export IMAGE_NAME=reg.unicom/epay/k8s/${SYSTEM_NICKNAME}/${CI_PROJECT_NAME}:${CI_COMMIT_SHORT_SHA}
+    - export ENV_SUBSYSTEM_NICKNAME=${CI_PROJECT_NAME}
+  variables:
+    DOCKER_AUTH_CONFIG: '{"auths": {"reg.unicom": {"auth": "d2VpaHU6RDMyNGRAMylNbTg5"}}}'
+  script:
+    - mkdir -p /kaniko/.docker
+    - echo $DOCKER_AUTH_CONFIG > /kaniko/.docker/config.json
+    - if [ ! -e "./Dockerfile" ]; then
+    - mv ./docker/Dockerfile Dockerfile
+    - fi
+    - cat Dockerfile
+    - mv ./docker/entrypoint.sh entrypoint.sh -f
+    - cat entrypoint.sh
+    - chmod +x entrypoint.sh
+    - echo "reg.unicom/epay/k8s/${SYSTEM_NICKNAME}/${CI_PROJECT_NAME}:${CI_COMMIT_SHORT_SHA}"
+    - /kaniko/executor -v info --context `pwd` --insecure --insecure-pull --skip-tls-verify  --skip-tls-verify-pull --dockerfile Dockerfile --destination $IMAGE_NAME
+  only:
+    - release
+
+sit-init-delivery-job:
+  stage: init-delivery
+  image: '$GITOPSER_IMAGE'
+  before_script:
+    - export SYSTEM_NICKNAME=$(echo ${CI_PROJECT_NAME} | cut -d - -f 1,2)
+    - export EPAYENV=xhm-k8s-sit
+    - export IMAGE_NAME=reg.unicom/epay/k8s/${SYSTEM_NICKNAME}/${CI_PROJECT_NAME}:${CI_COMMIT_SHORT_SHA}
+  script:
+    - java -jar /app/gitopser.jar --clone "http://gitcode.unicompayment.com/ts-adcs/ts-adcs-repository-delivery/${CI_PROJECT_NAME}.git|xhm-sit" ./repository-delivery/${CI_PROJECT_NAME}
+    - java -jar /app/gitopser.jar --clone "http://gitcode.unicompayment.com/ts-adcs/ts-adcs-subsystem-base-chart.git|dev" ./subsystem-helm-template
+    - java -jar /app/gitopser.jar --genValues ${CI_PROJECT_NAME} . ./repository-delivery/${CI_PROJECT_NAME} ./subsystem-helm-template ${CI_COMMIT_SHORT_SHA} ${IMAGE_NAME}
+    - java -jar /app/gitopser.jar --push ./repository-delivery/${CI_PROJECT_NAME} xhm-sit
+  only:
+    - release
+
+################## uat-all-steps-pipeline #####################
+uat-verify:
+  stage: verify
+  before_script:
+    - export EPAYENV=xhm-k8s-uat
+  image: '$GITOPSER_IMAGE'
+  script:
+    - java -jar /app/gitopser.jar -v . "$UAT_REPLICA_COUNT_LIMIT" "$UAT_CPU_LIMIT" "$UAT_MEMORY_LIMIT"
+    - java -jar /app/gitopser.jar --genDockerFiles ./docker ${CI_PROJECT_NAME}
+    - cat ./docker/Dockerfile
+    - cat ./docker/entrypoint.sh
+  artifacts:
+    paths:
+      - ./docker
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/
+
+uat-compile:
+  stage: compile
+  image: '$COMPILE_IMAGE'
+  before_script:
+    - export BASE_IMAGE_TYPE=$(sed 's,\#.*,,' ci-values.yaml | sed -n '/baseImageType/p' | sed 's/\"//g' | sed 's/baseImageType//g' | sed 's/://g' | sed "s/\'//g" | sed 's/[ ]*//g')
+    - export JAVA_TYPE=$(echo $BASE_IMAGE_TYPE | grep "java")
+    - export NODE_TYPE=$(echo $BASE_IMAGE_TYPE | grep "node")
+    - export NGINX_TYPE=$(echo $BASE_IMAGE_TYPE | grep "nginx")
+    - export CADDY_TYPE=$(echo $BASE_IMAGE_TYPE | grep "caddy")
+    - export TRACE_TYPE=$(sed 's,\#.*,,' ci-values.yaml | sed -n '/traceType/p' | sed 's/\"//g' | sed 's/traceType//g' | sed 's/://g' | sed "s/\'//g" | sed 's/[ ]*//g')
+    - export OPENTELEMETRY=$(echo $TRACE_TYPE | grep "opentelemetry")
+    - export EPAYENV=xhm-k8s-uat
+  script:
+    - pwd
+    - ls
+    - if [ "$JAVA_TYPE" ]; then
+    - mvn -Dmaven.test.skip=true -U -q clean package
+    - elif [[ "$NODE_TYPE" || "$NGINX_TYPE" || "$CADDY_TYPE" ]]; then
+    - npm config set sass_binary_site="$BINARY_SITE"
+    - npm config set canvas_binary_host_mirror="$BINARY_SITE"
+    - npm install --registry="$EPAY_NPM_REPOSITORY"
+    - export CI=false
+    - npm run build
+    - chmod -R 755 ./dist/
+    - if [ "$OPENTELEMETRY" ]; then
+    - npm install wo-trace-node --registry="$EPAY_NPM_REPOSITORY"
+    - fi
+    - else
+    - echo "baseImageType变量不合法"
+    - exit 1
+    - fi
+  artifacts:
+    paths:
+      - ./target/${CI_PROJECT_NAME}.jar
+      - ./dist
+      - ./node_modules
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/
+
+uat-build-image:
+  stage: build-image
+  before_script:
+    - export SYSTEM_NICKNAME=$(echo ${CI_PROJECT_NAME} | cut -d - -f 1,2)
+    - export SUBSYSTEM_VERSION=$(echo ${CI_COMMIT_TAG} | cut -d - -f -1)
+    - export IMAGE_NAME=reg.unicom/epay/k8s/${SYSTEM_NICKNAME}/${CI_PROJECT_NAME}:${SUBSYSTEM_VERSION}-${CI_COMMIT_SHORT_SHA}
+    - export ENV_SUBSYSTEM_NICKNAME=${CI_PROJECT_NAME}
+  image:
+    name: '$KANIKO_IMAGE'
+    entrypoint: ['']
+  variables:
+    DOCKER_AUTH_CONFIG: '{"auths": {"reg.unicom": {"auth": "d2VpaHU6RDMyNGRAMylNbTg5"}}}'
+  script:
+    - mkdir -p /kaniko/.docker
+    - echo $DOCKER_AUTH_CONFIG > /kaniko/.docker/config.json
+    - if [ ! -e "./Dockerfile" ]; then
+    - mv ./docker/Dockerfile Dockerfile
+    - fi
+    - cat Dockerfile
+    - mv ./docker/entrypoint.sh entrypoint.sh -f
+    - cat entrypoint.sh
+    - chmod +x entrypoint.sh
+    - /kaniko/executor -v info --context `pwd` --insecure --insecure-pull --skip-tls-verify  --skip-tls-verify-pull --dockerfile Dockerfile --destination $IMAGE_NAME
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/
+
+uat-init-delivery:
+  stage: init-delivery
+  before_script:
+    - export SYSTEM_NICKNAME=$(echo ${CI_PROJECT_NAME} | cut -d - -f 1,2)
+    - export EPAYENV=xhm-k8s-uat
+    - export SUBSYSTEM_VERSION=$(echo ${CI_COMMIT_TAG} | cut -d - -f -1)
+    - export IMAGE_NAME=reg.unicom/epay/k8s/${SYSTEM_NICKNAME}/${CI_PROJECT_NAME}:${SUBSYSTEM_VERSION}-${CI_COMMIT_SHORT_SHA}
+  image:
+    name: '$GITOPSER_IMAGE'
+  script:
+    - java -jar /app/gitopser.jar --clone "http://gitcode.unicompayment.com/ts-adcs/ts-adcs-repository-delivery/${CI_PROJECT_NAME}.git|xhm-uat" ./repository-delivery/${CI_PROJECT_NAME}
+    - java -jar /app/gitopser.jar --clone "http://gitcode.unicompayment.com/ts-adcs/ts-adcs-subsystem-base-chart.git|master" ./subsystem-helm-template
+    - java -jar /app/gitopser.jar --genValues ${CI_PROJECT_NAME} . ./repository-delivery/${CI_PROJECT_NAME} ./subsystem-helm-template ${SUBSYSTEM_VERSION} ${IMAGE_NAME}
+    - java -jar /app/gitopser.jar --push ./repository-delivery/${CI_PROJECT_NAME} xhm-uat
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/
+
+################## pet-all-steps-pipeline #####################
+pet-verify:
+  stage: verify
+  before_script:
+    - export EPAYENV=xhm-k8s-pet
+  image: '$GITOPSER_IMAGE'
+  script:
+    - java -jar /app/gitopser.jar -v . "$UAT_REPLICA_COUNT_LIMIT" "$UAT_CPU_LIMIT" "$UAT_MEMORY_LIMIT"
+    - java -jar /app/gitopser.jar --genDockerFiles ./docker ${CI_PROJECT_NAME}
+    - cat ./docker/Dockerfile
+    - cat ./docker/entrypoint.sh
+  artifacts:
+    paths:
+      - ./docker
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-pet\d+$/
+
+pet-compile:
+  stage: compile
+  image: '$COMPILE_IMAGE'
+  before_script:
+    - export BASE_IMAGE_TYPE=$(sed 's,\#.*,,' ci-values.yaml | sed -n '/baseImageType/p' | sed 's/\"//g' | sed 's/baseImageType//g' | sed 's/://g' | sed "s/\'//g" | sed 's/[ ]*//g')
+    - export JAVA_TYPE=$(echo $BASE_IMAGE_TYPE | grep "java")
+    - export NODE_TYPE=$(echo $BASE_IMAGE_TYPE | grep "node")
+    - export NGINX_TYPE=$(echo $BASE_IMAGE_TYPE | grep "nginx")
+    - export CADDY_TYPE=$(echo $BASE_IMAGE_TYPE | grep "caddy")
+    - export TRACE_TYPE=$(sed 's,\#.*,,' ci-values.yaml | sed -n '/traceType/p' | sed 's/\"//g' | sed 's/traceType//g' | sed 's/://g' | sed "s/\'//g" | sed 's/[ ]*//g')
+    - export OPENTELEMETRY=$(echo $TRACE_TYPE | grep "opentelemetry")
+    - export EPAYENV=xhm-k8s-pet
+  script:
+    - if [ "$JAVA_TYPE" ]; then
+    - mvn -Dmaven.test.skip=true -U clean package
+    - elif [[ "$NODE_TYPE" || "$NGINX_TYPE" || "$CADDY_TYPE" ]]; then
+    - npm config set sass_binary_site="$BINARY_SITE"
+    - npm config set canvas_binary_host_mirror="$BINARY_SITE"
+    - npm install --registry="$EPAY_NPM_REPOSITORY"
+    - export CI=false
+    - npm run build
+    - chmod -R 755 ./dist/
+    - if [ "$OPENTELEMETRY" ]; then
+    - npm install wo-trace-node --registry="$EPAY_NPM_REPOSITORY"
+    - fi
+    - else
+    - echo "baseImageType变量不合法"
+    - exit 1
+    - fi
+  artifacts:
+    paths:
+      - ./target/${CI_PROJECT_NAME}.jar
+      - ./dist
+      - ./node_modules
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-pet\d+$/
+
+pet-build-image:
+  stage: build-image
+  before_script:
+    - export SYSTEM_NICKNAME=$(echo ${CI_PROJECT_NAME} | cut -d - -f 1,2)
+    - export SUBSYSTEM_VERSION=$(echo ${CI_COMMIT_TAG} | cut -d - -f -1)
+    - export IMAGE_NAME=reg.unicom/epay/k8s/${SYSTEM_NICKNAME}/${CI_PROJECT_NAME}:${SUBSYSTEM_VERSION}-${CI_COMMIT_SHORT_SHA}
+    - export ENV_SUBSYSTEM_NICKNAME=${CI_PROJECT_NAME}
+  image:
+    name: '$KANIKO_IMAGE'
+    entrypoint: ['']
+  variables:
+    DOCKER_AUTH_CONFIG: '{"auths": {"reg.unicom": {"auth": "d2VpaHU6RDMyNGRAMylNbTg5"}}}'
+  script:
+    - mkdir -p /kaniko/.docker
+    - echo $DOCKER_AUTH_CONFIG > /kaniko/.docker/config.json
+    - if [ ! -e "./Dockerfile" ]; then
+    - mv ./docker/Dockerfile Dockerfile
+    - fi
+    - cat Dockerfile
+    - mv ./docker/entrypoint.sh entrypoint.sh -f
+    - cat entrypoint.sh
+    - chmod +x entrypoint.sh
+    - /kaniko/executor -v info --context `pwd` --insecure --insecure-pull --skip-tls-verify  --skip-tls-verify-pull --dockerfile Dockerfile --destination $IMAGE_NAME
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-pet\d+$/
+
+pet-init-delivery:
+  stage: init-delivery
+  before_script:
+    - export SYSTEM_NICKNAME=$(echo ${CI_PROJECT_NAME} | cut -d - -f 1,2)
+    - export EPAYENV=xhm-k8s-pet
+    - export SUBSYSTEM_VERSION=$(echo ${CI_COMMIT_TAG} | cut -d - -f -1)
+    - export IMAGE_NAME=reg.unicom/epay/k8s/${SYSTEM_NICKNAME}/${CI_PROJECT_NAME}:${SUBSYSTEM_VERSION}-${CI_COMMIT_SHORT_SHA}
+  image:
+    name: '$GITOPSER_IMAGE'
+  script:
+    - java -jar /app/gitopser.jar --clone "http://gitcode.unicompayment.com/ts-adcs/ts-adcs-repository-delivery/${CI_PROJECT_NAME}.git|xhm-pet" ./repository-delivery/${CI_PROJECT_NAME}
+    - java -jar /app/gitopser.jar --clone "http://gitcode.unicompayment.com/ts-adcs/ts-adcs-subsystem-base-chart.git|master" ./subsystem-helm-template
+    - java -jar /app/gitopser.jar --genValues ${CI_PROJECT_NAME} . ./repository-delivery/${CI_PROJECT_NAME} ./subsystem-helm-template ${SUBSYSTEM_VERSION} ${IMAGE_NAME}
+    - java -jar /app/gitopser.jar --push ./repository-delivery/${CI_PROJECT_NAME} xhm-pet
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-pet\d+$/
+
+################ stage-all-steps-pipeline ###########################
+stage-verify:
+  stage: verify
+  before_script:
+    - export EPAYENV=xhm-k8s-prod
+  image: '$GITOPSER_IMAGE'
+  script:
+    - java -jar /app/gitopser.jar -v . "$UAT_REPLICA_COUNT_LIMIT" "$UAT_CPU_LIMIT" "$UAT_MEMORY_LIMIT"
+    - java -jar /app/gitopser.jar --genDockerFiles ./docker ${CI_PROJECT_NAME}
+    - cat ./docker/Dockerfile
+    - cat ./docker/entrypoint.sh
+  artifacts:
+    paths:
+      - ./docker
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-stage\d+$/
+
+stage-compile:
+  stage: compile
+  image: '$COMPILE_IMAGE'
+  before_script:
+    - export BASE_IMAGE_TYPE=$(sed 's,\#.*,,' ci-values.yaml | sed -n '/baseImageType/p' | sed 's/\"//g' | sed 's/baseImageType//g' | sed 's/://g' | sed "s/\'//g" | sed 's/[ ]*//g')
+    - export JAVA_TYPE=$(echo $BASE_IMAGE_TYPE | grep "java")
+    - export NODE_TYPE=$(echo $BASE_IMAGE_TYPE | grep "node")
+    - export NGINX_TYPE=$(echo $BASE_IMAGE_TYPE | grep "nginx")
+    - export CADDY_TYPE=$(echo $BASE_IMAGE_TYPE | grep "caddy")
+    - export TRACE_TYPE=$(sed 's,\#.*,,' ci-values.yaml | sed -n '/traceType/p' | sed 's/\"//g' | sed 's/traceType//g' | sed 's/://g' | sed "s/\'//g" | sed 's/[ ]*//g')
+    - export OPENTELEMETRY=$(echo $TRACE_TYPE | grep "opentelemetry")
+    - export EPAYENV=xhm-k8s-prod
+  script:
+    - if [ "$JAVA_TYPE" ]; then
+    - mvn -Dmaven.test.skip=true -U clean package
+    - elif [[ "$NODE_TYPE" || "$NGINX_TYPE" || "$CADDY_TYPE" ]]; then
+    - npm config set sass_binary_site="$BINARY_SITE"
+    - npm config set canvas_binary_host_mirror="$BINARY_SITE"
+    - npm install --registry="$EPAY_NPM_REPOSITORY"
+    - export CI=false
+    - npm run build
+    - chmod -R 755 ./dist/
+    - if [ "$OPENTELEMETRY" ]; then
+    - npm install wo-trace-node --registry="$EPAY_NPM_REPOSITORY"
+    - fi
+    - else
+    - echo "baseImageType变量不合法"
+    - exit 1
+    - fi
+  artifacts:
+    paths:
+      - ./target/${CI_PROJECT_NAME}.jar
+      - ./dist
+      - ./node_modules
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-stage\d+$/
+
+stage-build-image:
+  stage: build-image
+  before_script:
+    - export SYSTEM_NICKNAME=$(echo ${CI_PROJECT_NAME} | cut -d - -f 1,2)
+    - export SUBSYSTEM_VERSION=$(echo ${CI_COMMIT_TAG} | cut -d - -f -1)
+    - export IMAGE_NAME=reg.unicom/epay/k8s/${SYSTEM_NICKNAME}/${CI_PROJECT_NAME}:${SUBSYSTEM_VERSION}-${CI_COMMIT_SHORT_SHA}
+    - export ENV_SUBSYSTEM_NICKNAME=${CI_PROJECT_NAME}
+  image:
+    name: '$KANIKO_IMAGE'
+    entrypoint: ['']
+  variables:
+    DOCKER_AUTH_CONFIG: '{"auths": {"reg.unicom": {"auth": "d2VpaHU6RDMyNGRAMylNbTg5"}}}'
+  script:
+    - mkdir -p /kaniko/.docker
+    - echo $DOCKER_AUTH_CONFIG > /kaniko/.docker/config.json
+    - if [ ! -e "./Dockerfile" ]; then
+    - mv ./docker/Dockerfile Dockerfile
+    - fi
+    - cat Dockerfile
+    - mv ./docker/entrypoint.sh entrypoint.sh -f
+    - cat entrypoint.sh
+    - chmod +x entrypoint.sh
+    - /kaniko/executor -v info --context `pwd` --insecure --insecure-pull --skip-tls-verify  --skip-tls-verify-pull --dockerfile Dockerfile --destination $IMAGE_NAME
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-stage\d+$/
+
+stage-init-delivery:
+  stage: init-delivery
+  before_script:
+    - export SYSTEM_NICKNAME=$(echo ${CI_PROJECT_NAME} | cut -d - -f 1,2)
+    - export EPAYENV=xhm-k8s-prod
+    - export SUBSYSTEM_VERSION=$(echo ${CI_COMMIT_TAG} | cut -d - -f -1)
+    - export IMAGE_NAME=reg.unicom/epay/k8s/${SYSTEM_NICKNAME}/${CI_PROJECT_NAME}:${SUBSYSTEM_VERSION}-${CI_COMMIT_SHORT_SHA}
+  image:
+    name: '$GITOPSER_IMAGE'
+  script:
+    - java -jar /app/gitopser.jar --clone "http://gitcode.unicompayment.com/ts-adcs/ts-adcs-repository-delivery/${CI_PROJECT_NAME}.git|xhm-stage" ./repository-delivery/${CI_PROJECT_NAME}
+    - java -jar /app/gitopser.jar --clone "http://gitcode.unicompayment.com/ts-adcs/ts-adcs-subsystem-base-chart.git|master" ./subsystem-helm-template
+    - java -jar /app/gitopser.jar --genValues ${CI_PROJECT_NAME} . ./repository-delivery/${CI_PROJECT_NAME} ./subsystem-helm-template ${SUBSYSTEM_VERSION} ${IMAGE_NAME}
+    - java -jar /app/gitopser.jar --push ./repository-delivery/${CI_PROJECT_NAME} xhm-stage
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-stage\d+$/
+################ prod-all-steps-pipeline ###########################
+prod-verify:
+  stage: verify
+  before_script:
+    - export ENABLE_CDN_VALUE=$(sed 's,\#.*,,' ci-values.yaml | sed -n '/enableCdn/p'| sed 's/enableCdn//g')
+    - export CDN_ENABLED=$(echo $ENABLE_CDN_VALUE | grep "true")
+    - export EPAYENV=xhm-k8s-prod
+  image: '$GITOPSER_IMAGE'
+  script:
+    - java -jar /app/gitopser.jar -v . "$UAT_REPLICA_COUNT_LIMIT" "$UAT_CPU_LIMIT" "$UAT_MEMORY_LIMIT"
+    - if [ "$CDN_ENABLED" ]; then
+    - java -jar /app/gitopser.jar --genDockerFiles ./docker ${CI_PROJECT_NAME}
+    - cat ./docker/Dockerfile
+    - cat ./docker/entrypoint.sh
+    - fi
+  artifacts:
+    paths:
+      - ./docker
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/
+
+prod-compile:
+  stage: compile
+  image: '$COMPILE_IMAGE'
+  before_script:
+    - export BASE_IMAGE_TYPE=$(sed 's,\#.*,,' ci-values.yaml | sed -n '/baseImageType/p' | sed 's/\"//g' | sed 's/baseImageType//g' | sed 's/://g' | sed "s/\'//g" | sed 's/[ ]*//g')
+    - export JAVA_TYPE=$(echo $BASE_IMAGE_TYPE | grep "java")
+    - export NODE_TYPE=$(echo $BASE_IMAGE_TYPE | grep "node")
+    - export NGINX_TYPE=$(echo $BASE_IMAGE_TYPE | grep "nginx")
+    - export CADDY_TYPE=$(echo $BASE_IMAGE_TYPE | grep "caddy")
+    - export TRACE_TYPE=$(sed 's,\#.*,,' ci-values.yaml | sed -n '/traceType/p' | sed 's/\"//g' | sed 's/traceType//g' | sed 's/://g' | sed "s/\'//g" | sed 's/[ ]*//g')
+    - export OPENTELEMETRY=$(echo $TRACE_TYPE | grep "opentelemetry")
+    - export ENABLE_CDN_VALUE=$(sed 's,\#.*,,' ci-values.yaml | sed -n '/enableCdn/p'| sed 's/enableCdn//g')
+    - export CDN_ENABLED=$(echo $ENABLE_CDN_VALUE | grep "true")
+    - export EPAYENV=xhm-k8s-prod
+  script:
+    - if [ "$CDN_ENABLED" ]; then
+    - if [ "$JAVA_TYPE" ]; then
+    - mvn -Dmaven.test.skip=true -U clean package
+    - elif [[ "$NODE_TYPE" || "$NGINX_TYPE" || "$CADDY_TYPE" ]]; then
+    - npm config set sass_binary_site="$BINARY_SITE"
+    - npm config set canvas_binary_host_mirror="$BINARY_SITE"
+    - npm install --registry="$EPAY_NPM_REPOSITORY"
+    - export CI=false
+    - npm run build
+    - chmod -R 755 ./dist/
+    - if [ "$OPENTELEMETRY" ]; then
+    - npm install wo-trace-node --registry="$EPAY_NPM_REPOSITORY"
+    - fi
+    - else
+    - echo "baseImageType变量不合法"
+    - exit 1
+    - fi
+    - fi
+  artifacts:
+    paths:
+      - ./target/${CI_PROJECT_NAME}.jar
+      - ./dist
+      - ./node_modules
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/
+
+prod-build-image:
+  stage: build-image
+  before_script:
+    - export SYSTEM_NICKNAME=$(echo ${CI_PROJECT_NAME} | cut -d - -f 1,2)
+    - export SUBSYSTEM_VERSION=$(echo ${CI_COMMIT_TAG} | cut -d - -f -1)
+    - export IMAGE_NAME=reg.unicom/epay/k8s/${SYSTEM_NICKNAME}/${CI_PROJECT_NAME}:${SUBSYSTEM_VERSION}-${CI_COMMIT_SHORT_SHA}
+    - export ENV_SUBSYSTEM_NICKNAME=${CI_PROJECT_NAME}
+    - export ENABLE_CDN_VALUE=$(sed 's,\#.*,,' ci-values.yaml | sed -n '/enableCdn/p' | sed 's/enableCdn//g')
+    - export CDN_ENABLED=$(echo $ENABLE_CDN_VALUE | grep "true")
+    - export EPAYENV=xhm-k8s-prod
+  image:
+    name: '$KANIKO_IMAGE'
+    entrypoint: ['']
+  variables:
+    DOCKER_AUTH_CONFIG: '{"auths": {"reg.unicom": {"auth": "d2VpaHU6RDMyNGRAMylNbTg5"}}}'
+  script:
+    - if [ "$CDN_ENABLED" ]; then
+    - mkdir -p /kaniko/.docker
+    - echo $DOCKER_AUTH_CONFIG > /kaniko/.docker/config.json
+    - if [ ! -e "./Dockerfile" ]; then
+    - mv ./docker/Dockerfile Dockerfile
+    - fi
+    - cat Dockerfile
+    - mv ./docker/entrypoint.sh entrypoint.sh -f
+    - cat entrypoint.sh
+    - chmod +x entrypoint.sh
+    - /kaniko/executor -v info --context `pwd` --insecure --insecure-pull --skip-tls-verify  --skip-tls-verify-pull --dockerfile Dockerfile --destination $IMAGE_NAME
+    - fi
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/
+
+xhm-prod-init-delivery:
+  stage: init-delivery
+  before_script:
+    - export SYSTEM_NICKNAME=$(echo ${CI_PROJECT_NAME} | cut -d - -f 1,2)
+    - export EPAYENV=xhm-k8s-prod
+    - export SUBSYSTEM_VERSION=$(echo ${CI_COMMIT_TAG} | cut -d - -f -1)
+    - export IMAGE_NAME=reg.unicom/epay/k8s/${SYSTEM_NICKNAME}/${CI_PROJECT_NAME}:${SUBSYSTEM_VERSION}-${CI_COMMIT_SHORT_SHA}
+  image:
+    name: '$GITOPSER_IMAGE'
+  script:
+    - java -jar /app/gitopser.jar --clone "http://gitcode.unicompayment.com/ts-adcs/ts-adcs-repository-delivery/${CI_PROJECT_NAME}.git|xhm-prod" ./repository-delivery/${CI_PROJECT_NAME}
+    - java -jar /app/gitopser.jar --clone "http://gitcode.unicompayment.com/ts-adcs/ts-adcs-subsystem-base-chart.git|master" ./subsystem-helm-template
+    - java -jar /app/gitopser.jar --genValues ${CI_PROJECT_NAME} . ./repository-delivery/${CI_PROJECT_NAME} ./subsystem-helm-template ${SUBSYSTEM_VERSION} ${IMAGE_NAME}
+    - java -jar /app/gitopser.jar --push ./repository-delivery/${CI_PROJECT_NAME} xhm-prod
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/
+
+gg-prod-init-delivery:
+  stage: init-delivery
+  before_script:
+    - export SYSTEM_NICKNAME=$(echo ${CI_PROJECT_NAME} | cut -d - -f 1,2)
+    - export EPAYENV=gg-k8s-prod
+    - export SUBSYSTEM_VERSION=$(echo ${CI_COMMIT_TAG} | cut -d - -f -1)
+    - export IMAGE_NAME=reg.unicom/epay/k8s/${SYSTEM_NICKNAME}/${CI_PROJECT_NAME}:${SUBSYSTEM_VERSION}-${CI_COMMIT_SHORT_SHA}
+  image:
+    name: '$GITOPSER_IMAGE'
+  script:
+    - java -jar /app/gitopser.jar --clone "http://gitcode.unicompayment.com/ts-adcs/ts-adcs-repository-delivery/${CI_PROJECT_NAME}.git|gg-prod" ./repository-delivery/${CI_PROJECT_NAME}
+    - java -jar /app/gitopser.jar --clone "http://gitcode.unicompayment.com/ts-adcs/ts-adcs-subsystem-base-chart.git|master" ./subsystem-helm-template
+    - java -jar /app/gitopser.jar --genValues ${CI_PROJECT_NAME} . ./repository-delivery/${CI_PROJECT_NAME} ./subsystem-helm-template ${SUBSYSTEM_VERSION} ${IMAGE_NAME}
+    - java -jar /app/gitopser.jar --push ./repository-delivery/${CI_PROJECT_NAME} gg-prod
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/
+
+################ resource-fix-steps-pipeline ###########################
+xhm-prod-resource-fix:
+  stage: resource-fix
+  before_script:
+    - export EPAYENV=xhm-k8s-prod
+  image:
+    name: '$GITOPSER_IMAGE'
+  script:
+    - java -jar /app/gitopser.jar -v . "$UAT_REPLICA_COUNT_LIMIT" "$UAT_CPU_LIMIT" "$UAT_MEMORY_LIMIT"
+    - java -jar /app/gitopser.jar --clone "http://gitcode.unicompayment.com/ts-adcs/ts-adcs-repository-delivery/${CI_PROJECT_NAME}.git|xhm-prod" ./repository-delivery/${CI_PROJECT_NAME}
+    - java -jar /app/gitopser.jar --resourceFix . ./repository-delivery/${CI_PROJECT_NAME} xhm-prod
+    - java -jar /app/gitopser.jar --push ./repository-delivery/${CI_PROJECT_NAME} xhm-prod
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-resourceFix\d+$/
+
+gg-prod-resource-fix:
+  stage: resource-fix
+  before_script:
+    - export EPAYENV=gg-k8s-prod
+  image:
+    name: '$GITOPSER_IMAGE'
+  script:
+    - java -jar /app/gitopser.jar -v . "$UAT_REPLICA_COUNT_LIMIT" "$UAT_CPU_LIMIT" "$UAT_MEMORY_LIMIT"
+    - java -jar /app/gitopser.jar --clone "http://gitcode.unicompayment.com/ts-adcs/ts-adcs-repository-delivery/${CI_PROJECT_NAME}.git|gg-prod" ./repository-delivery/${CI_PROJECT_NAME}
+    - java -jar /app/gitopser.jar --resourceFix . ./repository-delivery/${CI_PROJECT_NAME} gg-prod
+    - java -jar /app/gitopser.jar --push ./repository-delivery/${CI_PROJECT_NAME} gg-prod
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-resourceFix\d+$/

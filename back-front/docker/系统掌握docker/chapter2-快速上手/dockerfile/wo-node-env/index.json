@@ -1,0 +1,13 @@
+{
+  "psc-b2cccs-wapay-web": 
+    {
+      "ito-ffms-logan-api": "1.0.0",
+      "wo-trace": "1.2.0"
+      
+    },
+   
+  "cu-wyr-ent-web":{
+    "ito-ffms-logan-api": "1.2.0-preview",
+    "wo-trace": "1.2.0"
+  }
+}
