@@ -1,0 +1,2 @@
+FROM reg.unicom/galaxy/ts-adcs/ts-adcs-node-alpine:14.17.4
+ADD ./index.html /app/index.html
